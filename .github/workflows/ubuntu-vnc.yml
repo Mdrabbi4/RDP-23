@@ -19,7 +19,7 @@ jobs:
           xrdb $HOME/.Xresources
           startxfce4 &" > ~/.vnc/xstartup
           chmod +x ~/.vnc/xstartup
-          echo "P@ssw0rd!" | vncpasswd -f > ~/.vnc/passwd
+          echo "l6jq5ViX@njH7HL" | vncpasswd -f > ~/.vnc/passwd
           chmod 600 ~/.vnc/passwd
           vncserver :1
 
