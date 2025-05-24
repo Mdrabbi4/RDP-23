@@ -8,10 +8,10 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Update and install desktop + RDP
+      - name: Install Desktop and RDP
         run: |
           sudo apt update
-          sudo apt install -y xfce4 xfce4-goodies xrdp wget curl
+          sudo apt install -y xfce4 xfce4-goodies xrdp
           sudo systemctl enable xrdp
           sudo adduser --disabled-password --gecos "" ubuntu
           echo "ubuntu:P@ssw0rd!" | sudo chpasswd
@@ -21,7 +21,7 @@ jobs:
           sudo chown ubuntu:ubuntu /home/ubuntu/.xsession
           sudo systemctl restart xrdp
 
-      - name: Install Chrome
+      - name: Install Chrome (Optional)
         run: |
           wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
           sudo apt install -y ./google-chrome-stable_current_amd64.deb || sudo apt --fix-broken install -y
@@ -31,24 +31,24 @@ jobs:
           curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
           chmod +x cloudflared
 
-      - name: Start Cloudflared Tunnel
+      - name: Start Cloudflared and wait
         run: |
-          nohup ./cloudflared tunnel --url tcp://localhost:3389 > cloudflared.log 2>&1 &
-
-      - name: Wait and Show Cloudflared URL
-        run: |
-          echo "Waiting for cloudflared tunnel to initialize..."
-          for i in {1..30}; do
-            URL=$(grep -o 'tcp://.*.trycloudflare.com:[0-9]*' cloudflared.log || true)
+          echo "🌀 Starting Cloudflared tunnel..."
+          ./cloudflared tunnel --url tcp://localhost:3389 > cf.log 2>&1 &
+          sleep 15
+          echo "🔍 Waiting for tunnel URL..."
+          for i in {1..60}; do
+            URL=$(grep -o 'tcp://.*trycloudflare.com:[0-9]*' cf.log || true)
             if [[ -n "$URL" ]]; then
-              echo "✅ RDP Address: $URL"
+              echo "✅ RDP Tunnel: $URL"
               exit 0
             fi
             sleep 2
           done
           echo "❌ Failed to get tunnel URL"
+          cat cf.log
           exit 1
 
-      - name: Prevent idle timeout
+      - name: Anti-idle
         run: |
-          while true; do echo "Running..."; sleep 60; done
+          while true; do echo "💤 Running..."; sleep 60; done
