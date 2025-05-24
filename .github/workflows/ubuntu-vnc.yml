@@ -1,37 +1,32 @@
-name: Windows RDP via Ngrok
+name: Ubuntu XFCE RDP (Cloudflared)
 
 on: [workflow_dispatch]
 
 jobs:
-  build:
-    runs-on: windows-latest
+  desktop:
+    runs-on: ubuntu-latest
     timeout-minutes: 360
 
     steps:
-      - name: Download Ngrok
-        run: Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
-
-      - name: Extract Ngrok
-        run: Expand-Archive ngrok.zip
-
-      - name: Authenticate Ngrok
-        run: .\ngrok\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
-        env:
-          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-
-      - name: Enable RDP
+      - name: Set up XFCE and xRDP
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
-          net user runneradmin "P@ssw0rd!"  # Default GitHub Windows user
+          sudo apt update
+          sudo apt install -y xfce4 xfce4-goodies xrdp
+          sudo systemctl enable xrdp
+          sudo adduser ubuntu xrdp
+          echo "xfce4-session" > ~/.xsession
+          sudo sed -i 's/allowed_users=console/allowed_users=anybody/' /etc/X11/Xwrapper.config
+          sudo systemctl restart xrdp
 
-      - name: Start Ngrok TCP Tunnel
-        run: .\ngrok\ngrok.exe tcp 3389
+      - name: Set user password to P@ssw0rd!
+        run: echo 'ubuntu:P@ssw0rd!' | sudo chpasswd
 
-      - name: Prevent Idle Timeout
+      - name: Install and run cloudflared tunnel
         run: |
-          for ($i = 0; $i -lt 720; $i++) {
-            Write-Output "Anti-idle active... $i"
-            Start-Sleep -Seconds 30
-          }
+          wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared-linux-amd64.deb
+          nohup cloudflared tunnel --url tcp://localhost:3389 > cloudflared.log 2>&1 &
+
+      - name: Anti-idle
+        run: |
+          while true; do echo "Active..."; sleep 60; done
