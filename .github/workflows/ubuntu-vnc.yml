@@ -35,11 +35,20 @@ jobs:
         run: |
           nohup ./cloudflared tunnel --url tcp://localhost:3389 > cloudflared.log 2>&1 &
 
-      - name: Show Cloudflared Tunnel URL
+      - name: Wait and Show Cloudflared URL
         run: |
-          sleep 10
-          cat cloudflared.log | grep -o 'tcp://.*.trycloudflare.com:[0-9]*'
-          
+          echo "Waiting for cloudflared tunnel to initialize..."
+          for i in {1..30}; do
+            URL=$(grep -o 'tcp://.*.trycloudflare.com:[0-9]*' cloudflared.log || true)
+            if [[ -n "$URL" ]]; then
+              echo "✅ RDP Address: $URL"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "❌ Failed to get tunnel URL"
+          exit 1
+
       - name: Prevent idle timeout
         run: |
           while true; do echo "Running..."; sleep 60; done
