@@ -1,4 +1,4 @@
-name: Ubuntu XFCE RDP (Cloudflared)
+name: Ubuntu XFCE + RDP (Cloudflared)
 
 on: [workflow_dispatch]
 
@@ -8,25 +8,38 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Set up XFCE and xRDP
+      - name: Update and install desktop + RDP
         run: |
           sudo apt update
-          sudo apt install -y xfce4 xfce4-goodies xrdp
+          sudo apt install -y xfce4 xfce4-goodies xrdp wget curl
           sudo systemctl enable xrdp
-          sudo adduser ubuntu xrdp
-          echo "xfce4-session" > ~/.xsession
-          sudo sed -i 's/allowed_users=console/allowed_users=anybody/' /etc/X11/Xwrapper.config
+          sudo adduser --disabled-password --gecos "" ubuntu
+          echo "ubuntu:P@ssw0rd!" | sudo chpasswd
+          sudo usermod -aG sudo ubuntu
+          echo xfce4-session > ~/.xsession
+          sudo cp ~/.xsession /home/ubuntu/.xsession
+          sudo chown ubuntu:ubuntu /home/ubuntu/.xsession
           sudo systemctl restart xrdp
 
-      - name: Set user password to P@ssw0rd!
-        run: echo 'ubuntu:P@ssw0rd!' | sudo chpasswd
-
-      - name: Install and run cloudflared tunnel
+      - name: Install Chrome
         run: |
-          wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-          sudo dpkg -i cloudflared-linux-amd64.deb
-          nohup cloudflared tunnel --url tcp://localhost:3389 > cloudflared.log 2>&1 &
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt install -y ./google-chrome-stable_current_amd64.deb || sudo apt --fix-broken install -y
 
-      - name: Anti-idle
+      - name: Install Cloudflared
         run: |
-          while true; do echo "Active..."; sleep 60; done
+          curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+          chmod +x cloudflared
+
+      - name: Start Cloudflared Tunnel
+        run: |
+          nohup ./cloudflared tunnel --url tcp://localhost:3389 > cloudflared.log 2>&1 &
+
+      - name: Show Cloudflared Tunnel URL
+        run: |
+          sleep 10
+          cat cloudflared.log | grep -o 'tcp://.*.trycloudflare.com:[0-9]*'
+          
+      - name: Prevent idle timeout
+        run: |
+          while true; do echo "Running..."; sleep 60; done
