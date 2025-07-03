@@ -1,54 +1,39 @@
-name: Ubuntu XFCE + RDP (Cloudflared)
+name: CI
 
-on: [workflow_dispatch]
+on: [push, workflow_dispatch]
 
 jobs:
-  desktop:
-    runs-on: ubuntu-latest
-    timeout-minutes: 360
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 360  # 6 hours
 
     steps:
-      - name: Install Desktop and RDP
-        run: |
-          sudo apt update
-          sudo apt install -y xfce4 xfce4-goodies xrdp
-          sudo systemctl enable xrdp
-          sudo adduser --disabled-password --gecos "" ubuntu
-          echo "ubuntu:P@ssw0rd!" | sudo chpasswd
-          sudo usermod -aG sudo ubuntu
-          echo xfce4-session > ~/.xsession
-          sudo cp ~/.xsession /home/ubuntu/.xsession
-          sudo chown ubuntu:ubuntu /home/ubuntu/.xsession
-          sudo systemctl restart xrdp
+    - name: Download ngrok
+      run: Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
 
-      - name: Install Chrome (Optional)
-        run: |
-          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-          sudo apt install -y ./google-chrome-stable_current_amd64.deb || sudo apt --fix-broken install -y
+    - name: Extract ngrok
+      run: Expand-Archive ngrok.zip
 
-      - name: Install Cloudflared
-        run: |
-          curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
-          chmod +x cloudflared
+    - name: Auth with ngrok
+      run: .\ngrok\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
+      env:
+        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
-      - name: Start Cloudflared and wait
-        run: |
-          echo "🌀 Starting Cloudflared tunnel..."
-          ./cloudflared tunnel --url tcp://localhost:3389 > cf.log 2>&1 &
-          sleep 15
-          echo "🔍 Waiting for tunnel URL..."
-          for i in {1..60}; do
-            URL=$(grep -o 'tcp://.*trycloudflare.com:[0-9]*' cf.log || true)
-            if [[ -n "$URL" ]]; then
-              echo "✅ RDP Tunnel: $URL"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "❌ Failed to get tunnel URL"
-          cat cf.log
-          exit 1
+    - name: Enable Remote Desktop
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
 
-      - name: Anti-idle
-        run: |
-          while true; do echo "💤 Running..."; sleep 60; done
+    - name: Set RDP Password
+      run: Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd!" -Force)
+
+    - name: Create Tunnel with Reserved TCP Address
+      run: .\ngrok\ngrok.exe tcp --remote-addr=3.tcp.ngrok.io:28558 3389
+
+    - name: Prevent Idle Timeout (Anti-idle)
+      run: |
+        for ($i = 0; $i -lt 720; $i++) {
+          Write-Output "Keeping alive... $i"
+          Start-Sleep -Seconds 30
+        }
